@@ -15,12 +15,14 @@
       <span class="brand-mark">专</span>
       <span><strong>专词</strong><small>TEM-4 真题精读</small></span>
     </a>
-    <div class="top-actions">
+    <button class="icon-button mobile-only" id="toolsButton" aria-label="打开功能菜单">⋯</button>
+    <div class="top-actions" id="topActions">
       <button class="control-button" id="toggleWordGloss">逐词 <span>开</span></button>
       <button class="control-button" id="toggleGloss">标记 <span>开</span></button>
       <button class="control-button" id="toggleTranslation">段译 <span>开</span></button>
+      <button class="control-button" id="studyButton">🧠 背词</button>
       <button class="control-button hand-button" id="openHandwriting">✍ 手写默写</button>
-      <button class="primary-button" id="exportButton">导出生词默写 PDF</button>
+      <button class="primary-button" id="exportButton">选择生词并打印</button>
     </div>
   </header>
 
@@ -61,6 +63,7 @@
         <span class="count" id="wordCount">0</span>
       </div>
       <p class="empty-hint" id="emptyHint">点正文里的单词，再点星标收藏。生词、译文与查词结果仅保存在当前浏览器。</p>
+      <div class="vocab-bulk" id="vocabBulk"><button data-vocab-bulk="all">全选</button><button data-vocab-bulk="none">全不选</button><span id="selectedWordCount">已选 0</span></div>
       <div class="vocab-list" id="vocabList"></div>
       <button class="clear-button" id="clearWords">清空生词本</button>
     </aside>
@@ -86,18 +89,66 @@
         <div><span class="mini-label">HANDWRITING MODE</span><h2>生词手写默写</h2></div>
         <button id="closeHandwriting" class="drawer-close" aria-label="关闭">×</button>
       </div>
-      <div class="prompt-card">
-        <button id="dictationSpeak" class="round-button" title="播放发音">▶</button>
-        <div><span id="dictationCounter">1 / 1</span><p id="dictationClue">先听发音，再在下方写出单词</p><strong id="dictationAnswer" class="hidden-answer">••••••</strong></div>
-        <button id="revealAnswer" class="reveal-button">显示答案</button>
+      <div class="practice-setup" id="handwritingSetup">
+        <h3>选择默写方向</h3>
+        <div class="mode-options">
+          <label><input type="radio" name="handwritingMode" value="zh-en" checked><span>看中文，写英文</span></label>
+          <label><input type="radio" name="handwritingMode" value="en-zh"><span>看英文，写中文</span></label>
+        </div>
+        <div class="picker-head"><strong>选择默写生词</strong><div><button data-picker="handwriting" data-action="all">全选</button><button data-picker="handwriting" data-action="none">全不选</button></div></div>
+        <div class="word-pick-list" id="handwritingWordList"></div>
+        <button class="start-practice" id="startHandwriting">开始手写默写</button>
       </div>
-      <div class="canvas-wrap"><canvas id="handwritingCanvas"></canvas><span class="canvas-watermark">在这里手写</span></div>
-      <div class="handwriting-tools">
-        <label>笔色 <input type="color" id="penColor" value="#20313b"></label>
-        <label>粗细 <input type="range" id="penSize" min="2" max="12" value="4"></label>
-        <button id="undoStroke">撤销</button><button id="clearCanvas">清空</button><button id="saveCanvas">保存笔迹</button>
+      <div id="handwritingSession" hidden>
+        <div class="prompt-card">
+          <button id="dictationSpeak" class="round-button" title="播放发音">▶</button>
+          <div class="prompt-copy"><span id="dictationCounter">1 / 1</span><strong id="dictationPrompt">中文释义</strong><p id="dictationClue">英文解释</p><strong id="dictationAnswer" class="hidden-answer">••••••</strong></div>
+          <button id="revealAnswer" class="reveal-button">显示答案</button>
+        </div>
+        <div class="canvas-wrap"><canvas id="handwritingCanvas"></canvas><span class="canvas-watermark">在这里手写</span></div>
+        <div class="handwriting-tools">
+          <label>笔色 <input type="color" id="penColor" value="#20313b"></label>
+          <label>粗细 <input type="range" id="penSize" min="2" max="12" value="4"></label>
+          <button id="undoStroke">撤销</button><button id="clearCanvas">清空</button><button id="saveCanvas">保存笔迹</button>
+        </div>
+        <div class="dictation-nav"><button id="handwritingBack">← 重选生词</button><span><button id="prevWord">← 上一个</button><button id="nextWord">下一个 →</button></span></div>
       </div>
-      <div class="dictation-nav"><button id="prevWord">← 上一个</button><button id="nextWord">下一个 →</button></div>
+    </div>
+  </section>
+
+  <section class="selection-modal" id="exportModal" aria-hidden="true">
+    <div class="selection-card">
+      <div class="selection-head"><div><span class="mini-label">PRINT SETTINGS</span><h2>选择生词与默写版式</h2></div><button class="drawer-close" id="closeExport" aria-label="关闭">×</button></div>
+      <div class="mode-options">
+        <label><input type="radio" name="printMode" value="en-zh" checked><span>左侧英文，右侧默写中文</span></label>
+        <label><input type="radio" name="printMode" value="zh-en"><span>左侧默写英文，右侧中文</span></label>
+      </div>
+      <div class="picker-head"><strong>选择要打印的生词</strong><div><button data-picker="export" data-action="all">全选</button><button data-picker="export" data-action="none">全不选</button></div></div>
+      <div class="word-pick-list" id="exportWordList"></div>
+      <div class="selection-footer"><span id="exportSelectedCount">已选 0 个</span><button class="start-practice" id="confirmExport">生成打印页与答案</button></div>
+    </div>
+  </section>
+
+  <section class="selection-modal" id="studyModal" aria-hidden="true">
+    <div class="selection-card study-card">
+      <div class="selection-head"><div><span class="mini-label">FLASHCARD MODE</span><h2>卡片背词</h2></div><button class="drawer-close" id="closeStudy" aria-label="关闭">×</button></div>
+      <div class="practice-setup" id="studySetup">
+        <p class="setup-hint">选择本轮要复习的生词。学习记录会保存在当前浏览器。</p>
+        <div class="picker-head"><strong>选择背诵生词</strong><div><button data-picker="study" data-action="all">全选</button><button data-picker="study" data-action="none">全不选</button></div></div>
+        <div class="word-pick-list" id="studyWordList"></div>
+        <button class="start-practice" id="startStudy">开始背词</button>
+      </div>
+      <div class="study-session" id="studySession" hidden>
+        <div class="study-progress"><span id="studyProgressText">1 / 1</span><i><b id="studyProgressBar"></b></i><span id="studyKnownCount">已掌握 0</span></div>
+        <article class="study-flashcard">
+          <button class="round-button" id="studySpeak">▶</button>
+          <strong id="studyWord">word</strong><span id="studyPhonetic">/wɜːd/</span>
+          <p id="studyDefinition">English explanation</p>
+          <div class="study-chinese hidden-meaning" id="studyChinese">中文释义</div>
+        </article>
+        <div class="study-actions"><button id="revealStudy">显示中文</button><button class="again-button" id="studyAgain">再学一次</button><button class="known-button" id="studyKnown">认识</button></div>
+        <button class="back-selection" id="studyBack">← 重新选择生词</button>
+      </div>
     </div>
   </section>
 

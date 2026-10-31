@@ -12,6 +12,8 @@
   const dictionaryKey = "tem4-dictionary-cache-v2";
   const translationKey = "tem4-translation-cache-v2";
   const writingKey = "tem4-handwriting-v1";
+  const wordSelectionKey = "tem4-word-selection-v1";
+  const studyProgressKey = "tem4-study-progress-v1";
   const importanceWords = new Set(("abandon abstract academic access accommodate accumulate acknowledge acquire adapt adequate adjacent advocate ambiguous apparent arbitrary assess assume attain attribute authentic bias cease coherent coincide compelling comprehensive conceive consecutive considerable constitute constrain controversy conventional crucial decline define derive diminish discriminate distinct diverse domestic elaborate emerge empirical enhance equivalent establish evident explicit facilitate fluctuate fundamental generate hypothesis identify imply impose incentive inevitable inhibit initiate insight integral interpret intervene intrinsic justify maintain manipulate mechanism modify mutual notion objective obtain perceive persist perspective plausible preliminary presume prevalent profound promote proportion pursue rational reinforce relevant reluctant resolve retain reveal significant subsequent substitute sustain tentative transform trigger ultimate undermine valid welfare").split(/\s+/));
   const phraseEntries = [
     ["according to","根据；按照"],["as well as","以及；除……之外还"],["in order to","为了"],["due to","由于；因为"],
@@ -58,6 +60,17 @@
   let dictionaryCache = loadJSON(dictionaryKey, {});
   let translationCache = loadJSON(translationKey, {});
   let writingCache = loadJSON(writingKey, {});
+  const storedWordSelection = loadJSON(wordSelectionKey, null);
+  let selectedWordKeys = new Set(Array.isArray(storedWordSelection) ? storedWordSelection.filter(key => savedWords[key]) : Object.keys(savedWords));
+  let exportSelectedKeys = new Set();
+  let handwritingSelectedKeys = new Set();
+  let studySelectedKeys = new Set();
+  let handwritingQueue = [];
+  let handwritingMode = "zh-en";
+  let studyQueue = [];
+  let studyIndex = 0;
+  let studyKnown = 0;
+  let studyProgress = loadJSON(studyProgressKey, {});
   let glossVisible = true;
   let wordGlossVisible = localStorage.getItem("tem4-word-gloss-visible") !== "0";
   let translationVisible = true;
@@ -119,6 +132,52 @@
       if (usageLexicon[candidate]) return {key:candidate, items:usageLexicon[candidate]};
     }
     return null;
+  }
+
+  function cleanChineseMeaning(value = "") {
+    const parts = String(value)
+      .replace(/\[[^\]]+\]/g, "")
+      .split(/[；;]/)
+      .map(item => item.replace(/^(?:n|v|vt|vi|adj|adv|prep|pron|conj|art|num|aux|int|a|ad)\.\s*/i, "").trim())
+      .filter(item => /[\u3400-\u9fff]/.test(item));
+    return [...new Set(parts)].slice(0, 3).join("；");
+  }
+
+  function wordChinese(item) {
+    const offline = lookupOffline(item.word)?.zh || "";
+    const raw = item.info?.zh || item.meaning || offline;
+    return cleanChineseMeaning(raw) || "暂无中文释义";
+  }
+
+  function wordDefinition(item) {
+    return item.info?.definitions?.find(def => def.definition)?.definition
+      || lookupOffline(item.word)?.definition?.split(/[；;]/).find(Boolean)
+      || "暂无英文解释";
+  }
+
+  function savedWordList(keys = null) {
+    return Object.values(savedWords)
+      .filter(item => !keys || keys.has(item.key))
+      .sort((a, b) => a.word.localeCompare(b.word, "en"));
+  }
+
+  function persistWordSelection() {
+    saveJSON(wordSelectionKey, [...selectedWordKeys]);
+  }
+
+  function renderWordPicker(container, selectedKeys, emptyText = "生词本还是空的") {
+    const list = savedWordList();
+    container.innerHTML = list.length ? list.map(item => `<label class="word-pick-item">
+      <input type="checkbox" value="${escapeHtml(item.key)}" ${selectedKeys.has(item.key) ? "checked" : ""}>
+      <span><strong>${escapeHtml(item.word)}</strong><small>${escapeHtml(wordChinese(item))}</small></span>
+    </label>`).join("") : `<p class="picker-empty">${escapeHtml(emptyText)}</p>`;
+  }
+
+  function setPickerSelection(container, selectedKeys, checked) {
+    $$("input[type=checkbox]", container).forEach(input => {
+      input.checked = checked;
+      if (checked) selectedKeys.add(input.value); else selectedKeys.delete(input.value);
+    });
   }
 
   function inlineMeaning(word) {
@@ -509,48 +568,195 @@
 
   function toggleSelectedWord() {
     if (!selectedWord) return;
-    if (savedWords[selectedWord.key]) delete savedWords[selectedWord.key];
-    else savedWords[selectedWord.key] = { ...selectedWord, info: selectedWord.info || null, addedAt: Date.now() };
-    saveJSON(storageKey, savedWords); renderVocabulary(); updateStar();
+    if (savedWords[selectedWord.key]) {
+      delete savedWords[selectedWord.key];
+      selectedWordKeys.delete(selectedWord.key);
+    } else {
+      savedWords[selectedWord.key] = { ...selectedWord, info: selectedWord.info || null, addedAt: Date.now() };
+      selectedWordKeys.add(selectedWord.key);
+    }
+    saveJSON(storageKey, savedWords); persistWordSelection(); renderVocabulary(); updateStar();
     $$(".word-wrap[data-key]").forEach(el => el.classList.toggle("saved", Boolean(savedWords[el.dataset.key])));
   }
 
   function renderVocabulary() {
     const list = Object.values(savedWords).sort((a, b) => b.addedAt - a.addedAt);
+    selectedWordKeys = new Set([...selectedWordKeys].filter(key => savedWords[key]));
     $("#wordCount").textContent = list.length;
     $("#emptyHint").style.display = list.length ? "none" : "block";
     $("#clearWords").style.display = list.length ? "block" : "none";
-    $("#vocabList").innerHTML = list.map(item => `<div class="vocab-item"><button class="vocab-speak" data-speak="${escapeHtml(item.word)}">▶</button><strong>${escapeHtml(item.word)}</strong><span>${escapeHtml(item.info?.phonetic || item.context || "已收藏")}</span><button class="vocab-remove" data-remove="${escapeHtml(item.key)}" title="移除">×</button></div>`).join("");
+    $("#vocabBulk").style.display = list.length ? "flex" : "none";
+    $("#selectedWordCount").textContent = `已选 ${selectedWordKeys.size}`;
+    $("#vocabList").innerHTML = list.map(item => `<div class="vocab-item">
+      <label class="vocab-select" title="选择用于打印与练习"><input type="checkbox" data-select-word="${escapeHtml(item.key)}" ${selectedWordKeys.has(item.key) ? "checked" : ""}></label>
+      <button class="vocab-speak" data-speak="${escapeHtml(item.word)}">▶</button>
+      <strong>${escapeHtml(item.word)}</strong><span>${escapeHtml(wordChinese(item))}</span>
+      <button class="vocab-remove" data-remove="${escapeHtml(item.key)}" title="移除">×</button>
+    </div>`).join("");
   }
 
-  function buildPrintSheet() {
-    const list = Object.values(savedWords).sort((a, b) => a.word.localeCompare(b.word, "en"));
-    if (!list.length) { showToast("生词本还是空的，先收藏几个单词吧"); return false; }
+  function openExportModal() {
+    if (!Object.keys(savedWords).length) { showToast("生词本还是空的，先收藏几个单词吧"); return; }
+    exportSelectedKeys = new Set(selectedWordKeys);
+    renderWordPicker($("#exportWordList"), exportSelectedKeys);
+    updateExportCount();
+    $("#exportModal").classList.add("open");
+    $("#exportModal").setAttribute("aria-hidden", "false");
+  }
+
+  function closeExportModal() {
+    $("#exportModal").classList.remove("open");
+    $("#exportModal").setAttribute("aria-hidden", "true");
+  }
+
+  function updateExportCount() { $("#exportSelectedCount").textContent = `已选 ${exportSelectedKeys.size} 个`; }
+
+  function buildPrintSheet(list, mode) {
+    if (!list.length) { showToast("请至少选择一个生词"); return false; }
     const date = new Intl.DateTimeFormat("zh-CN", {year:"numeric", month:"long", day:"numeric"}).format(new Date());
-    const questions = list.map((item, i) => `<div class="dictation-item"><span>${i + 1}</span><button onclick="speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance('${escapeHtml(item.word)}'),{lang:'en-GB',rate:.75}))">▶</button><span class="dictation-blank"></span></div>`).join("");
-    const answers = list.map((item, i) => `<div class="answer-row"><span>${i + 1}. ${escapeHtml(item.word)}</span><strong>${escapeHtml(item.info?.phonetic || item.context || "")}</strong></div>`).join("");
-    $("#printSheet").innerHTML = `<h1 class="print-title">英语专业四级 · 生词手写默写</h1><div class="print-meta">姓名：__________　日期：${date}　共 ${list.length} 词</div>${questions}<section class="answer-page"><h2>参考答案</h2><div class="answer-grid">${answers}</div></section>`;
+    const direction = mode === "en-zh" ? "看英文写中文" : "看中文写英文";
+    const questions = list.map((item, i) => {
+      const english = escapeHtml(item.word);
+      const chinese = escapeHtml(wordChinese(item));
+      return `<div class="print-practice-row"><span class="print-number">${i + 1}</span><div class="print-cell ${mode === "zh-en" ? "write-cell" : "cue-cell"}">${mode === "zh-en" ? "" : english}</div><div class="print-cell ${mode === "en-zh" ? "write-cell" : "cue-cell"}">${mode === "en-zh" ? "" : chinese}</div></div>`;
+    }).join("");
+    const answers = list.map((item, i) => `<div class="answer-row"><span>${i + 1}</span><strong>${escapeHtml(item.word)}</strong><p>${escapeHtml(wordChinese(item))}</p></div>`).join("");
+    $("#printSheet").innerHTML = `<h1 class="print-title">英语专业四级 · 生词双向默写</h1><div class="print-meta">姓名：__________　日期：${date}　共 ${list.length} 词　模式：${direction}</div><div class="print-table-head"><span>序号</span><strong>英文</strong><strong>中文</strong></div><div class="print-practice-table">${questions}</div><section class="answer-page"><h2>参考答案</h2><p class="answer-note">完整答案：左侧英文，右侧中文</p><div class="answer-table-head"><span>序号</span><strong>英文</strong><strong>中文</strong></div><div class="answer-grid">${answers}</div></section>`;
     return true;
   }
 
-  function dictationWords() { return Object.values(savedWords).sort((a, b) => a.word.localeCompare(b.word, "en")); }
+  function confirmExport() {
+    const list = savedWordList(exportSelectedKeys);
+    const mode = $('input[name="printMode"]:checked')?.value || "en-zh";
+    if (!buildPrintSheet(list, mode)) return;
+    closeExportModal();
+    requestAnimationFrame(() => window.print());
+  }
+
+  function dictationWords() { return handwritingQueue; }
 
   function openHandwriting() {
-    const list = dictationWords();
-    if (!list.length) { showToast("先收藏生词，再开始手写默写"); return; }
-    dictationIndex = Math.min(dictationIndex, list.length - 1);
+    if (!Object.keys(savedWords).length) { showToast("先收藏生词，再开始手写默写"); return; }
+    handwritingSelectedKeys = new Set(selectedWordKeys);
+    renderWordPicker($("#handwritingWordList"), handwritingSelectedKeys);
+    $("#handwritingSetup").hidden = false;
+    $("#handwritingSession").hidden = true;
     $("#handwritingModal").classList.add("open"); $("#handwritingModal").setAttribute("aria-hidden", "false");
+  }
+
+  function startHandwriting() {
+    handwritingQueue = savedWordList(handwritingSelectedKeys);
+    if (!handwritingQueue.length) { showToast("请至少选择一个默写生词"); return; }
+    handwritingMode = $('input[name="handwritingMode"]:checked')?.value || "zh-en";
+    dictationIndex = 0;
+    $("#handwritingSetup").hidden = true;
+    $("#handwritingSession").hidden = false;
     requestAnimationFrame(() => { resizeCanvas(); loadCurrentWriting(); renderDictation(); });
   }
 
-  function closeHandwriting() { saveCurrentWriting(); $("#handwritingModal").classList.remove("open"); $("#handwritingModal").setAttribute("aria-hidden", "true"); }
+  function closeHandwriting() {
+    if (!$("#handwritingSession").hidden) saveCurrentWriting();
+    $("#handwritingModal").classList.remove("open"); $("#handwritingModal").setAttribute("aria-hidden", "true");
+  }
+
+  function backToHandwritingSetup() {
+    saveCurrentWriting();
+    $("#handwritingSession").hidden = true;
+    $("#handwritingSetup").hidden = false;
+  }
 
   function renderDictation() {
     const list = dictationWords(); const item = list[dictationIndex]; if (!item) return;
+    const chinese = wordChinese(item);
+    const definition = wordDefinition(item);
     $("#dictationCounter").textContent = `${dictationIndex + 1} / ${list.length}`;
-    $("#dictationClue").textContent = item.info?.definitions?.[0]?.definition || item.context || "听发音，在画布上写出单词";
-    $("#dictationAnswer").textContent = item.word; $("#dictationAnswer").classList.add("hidden-answer");
+    $("#dictationPrompt").textContent = handwritingMode === "zh-en" ? chinese : item.word;
+    $("#dictationClue").textContent = `英文解释：${definition}`;
+    $("#dictationAnswer").textContent = `${item.word} — ${chinese}`; $("#dictationAnswer").classList.add("hidden-answer");
+    $("#dictationSpeak").style.visibility = handwritingMode === "zh-en" ? "visible" : "visible";
+    $("#handwritingCanvas").setAttribute("aria-label", handwritingMode === "zh-en" ? "书写英文" : "书写中文");
+    $(".canvas-watermark").textContent = handwritingMode === "zh-en" ? "在这里写英文" : "在这里写中文";
     $("#revealAnswer").textContent = "显示答案";
+  }
+
+  function openStudy() {
+    if (!Object.keys(savedWords).length) { showToast("先收藏生词，再开始背词"); return; }
+    studySelectedKeys = new Set(selectedWordKeys);
+    renderWordPicker($("#studyWordList"), studySelectedKeys);
+    $("#studySetup").hidden = false;
+    $("#studySession").hidden = true;
+    $("#studyModal").classList.add("open");
+    $("#studyModal").setAttribute("aria-hidden", "false");
+  }
+
+  function closeStudy() {
+    $("#studyModal").classList.remove("open");
+    $("#studyModal").setAttribute("aria-hidden", "true");
+  }
+
+  function startStudy() {
+    studyQueue = savedWordList(studySelectedKeys);
+    if (!studyQueue.length) { showToast("请至少选择一个背诵生词"); return; }
+    studyQueue = [...studyQueue].sort(() => Math.random() - .5);
+    studyIndex = 0; studyKnown = 0;
+    $("#studySetup").hidden = true;
+    $("#studySession").hidden = false;
+    renderStudyCard();
+  }
+
+  function renderStudyCard() {
+    const item = studyQueue[studyIndex];
+    if (!item) {
+      $("#studyWord").textContent = "本轮完成";
+      $("#studyPhonetic").textContent = "";
+      $("#studyDefinition").textContent = `共复习 ${studyIndex} 张卡片，标记掌握 ${studyKnown} 次。`;
+      $("#studyChinese").textContent = "可以返回重新选择生词，或关闭后继续阅读。";
+      $("#studyChinese").classList.remove("hidden-meaning");
+      $("#studySpeak").disabled = true;
+      $("#revealStudy").style.display = "none";
+      $("#studyAgain").style.display = "none";
+      $("#studyKnown").style.display = "none";
+      $("#studyProgressText").textContent = "完成";
+      $("#studyProgressBar").style.width = "100%";
+      return;
+    }
+    const offline = lookupOffline(item.word);
+    $("#studyWord").textContent = item.word;
+    $("#studyPhonetic").textContent = item.info?.phonetic || (offline?.phonetic ? `/${offline.phonetic.replace(/^\/+|\/+$/g, "")}/` : "");
+    $("#studyDefinition").textContent = wordDefinition(item);
+    $("#studyChinese").textContent = wordChinese(item);
+    $("#studyChinese").classList.add("hidden-meaning");
+    $("#studySpeak").disabled = false;
+    $("#revealStudy").style.display = "inline-block";
+    $("#studyAgain").style.display = "inline-block";
+    $("#studyKnown").style.display = "inline-block";
+    $("#revealStudy").textContent = "显示中文";
+    $("#studyProgressText").textContent = `${studyIndex + 1} / ${studyQueue.length}`;
+    $("#studyKnownCount").textContent = `已掌握 ${studyKnown}`;
+    $("#studyProgressBar").style.width = `${Math.round(studyIndex / Math.max(1, studyQueue.length) * 100)}%`;
+  }
+
+  function revealStudyMeaning() {
+    const meaning = $("#studyChinese");
+    meaning.classList.toggle("hidden-meaning");
+    $("#revealStudy").textContent = meaning.classList.contains("hidden-meaning") ? "显示中文" : "隐藏中文";
+  }
+
+  function rateStudy(known) {
+    const item = studyQueue[studyIndex]; if (!item) return;
+    const record = studyProgress[item.key] || { known:0, review:0 };
+    record.review += 1; record.known += known ? 1 : 0; record.reviewedAt = Date.now();
+    studyProgress[item.key] = record; saveJSON(studyProgressKey, studyProgress);
+    if (known) studyKnown += 1;
+    else studyQueue.push(item);
+    studyIndex += 1;
+    renderStudyCard();
+  }
+
+  function backToStudySetup() {
+    $("#studySession").hidden = true;
+    $("#studySetup").hidden = false;
+    renderWordPicker($("#studyWordList"), studySelectedKeys);
   }
 
   function canvas() { return $("#handwritingCanvas"); }
@@ -563,7 +769,7 @@
   function startStroke(event) { event.preventDefault(); activeStroke={color:$("#penColor").value,size:Number($("#penSize").value),points:[canvasPoint(event)]}; strokes.push(activeStroke); canvas().setPointerCapture?.(event.pointerId); }
   function moveStroke(event) { if(!activeStroke)return; event.preventDefault(); activeStroke.points.push(canvasPoint(event)); redrawCanvas(); }
   function endStroke() { activeStroke=null; saveCurrentWriting(); }
-  function writingId() { return dictationWords()[dictationIndex]?.key; }
+  function writingId() { const key=dictationWords()[dictationIndex]?.key; return key ? `${handwritingMode}:${key}` : ""; }
   function saveCurrentWriting() { const id=writingId(); if(!id)return; writingCache[id]=strokes; saveJSON(writingKey,writingCache); }
   function loadCurrentWriting() { strokes=writingCache[writingId()]||[]; redrawCanvas(); }
   function moveDictation(delta) { saveCurrentWriting(); const list=dictationWords(); dictationIndex=(dictationIndex+delta+list.length)%list.length; loadCurrentWriting(); renderDictation(); speak(list[dictationIndex].word,list[dictationIndex].info?.audio); }
@@ -584,16 +790,36 @@
   $("#toggleWordGloss").addEventListener("click",()=>{wordGlossVisible=!wordGlossVisible;paper.classList.toggle("hide-word-gloss",!wordGlossVisible);$("#toggleWordGloss span").textContent=wordGlossVisible?"开":"关";localStorage.setItem("tem4-word-gloss-visible",wordGlossVisible?"1":"0");});
   $("#toggleGloss").addEventListener("click",()=>{glossVisible=!glossVisible;paper.classList.toggle("hide-gloss",!glossVisible);$("#toggleGloss span").textContent=glossVisible?"开":"关";});
   $("#toggleTranslation").addEventListener("click",()=>{translationVisible=!translationVisible;paper.classList.toggle("hide-translation",!translationVisible);$("#toggleTranslation span").textContent=translationVisible?"开":"关";});
-  $("#navSearch").addEventListener("input",event=>buildNav(event.target.value)); $("#menuButton").addEventListener("click",()=>$("#sidebar").classList.toggle("open"));
+  $("#navSearch").addEventListener("input",event=>buildNav(event.target.value));
+  $("#menuButton").addEventListener("click",()=>$("#sidebar").classList.toggle("open"));
+  $("#toolsButton").addEventListener("click",event=>{event.stopPropagation();$("#topActions").classList.toggle("open");});
+  $("#topActions").addEventListener("click",event=>{if(event.target.closest("button")&&innerWidth<=1020)$("#topActions").classList.remove("open");});
+  document.addEventListener("click",event=>{if(innerWidth<=1020&&!event.target.closest("#topActions")&&!event.target.closest("#toolsButton"))$("#topActions").classList.remove("open");});
   $("#closeDrawer").addEventListener("click",closeDrawer); $("#drawerShade").addEventListener("click",closeDrawer); $("#detailStar").addEventListener("click",toggleSelectedWord); $("#wordSpeak").addEventListener("click",()=>selectedWord&&speak(selectedWord.word,selectedWord.info?.audio));
   $("#detailUsage").addEventListener("click",event=>{if(event.target.closest("#fetchOnlineUsage"))loadOnlineUsage();});
-  $("#vocabList").addEventListener("click",event=>{const remove=event.target.dataset.remove;if(remove){delete savedWords[remove];saveJSON(storageKey,savedWords);renderVocabulary();renderSection(false);return;}const word=event.target.dataset.speak;if(word)speak(word);});
-  $("#clearWords").addEventListener("click",()=>{if(confirm("确定清空全部生词吗？")){savedWords={};saveJSON(storageKey,savedWords);renderVocabulary();renderSection(false);}});
-  $("#exportButton").addEventListener("click",()=>{if(buildPrintSheet())window.print();});
-  $("#openHandwriting").addEventListener("click",openHandwriting); $("#closeHandwriting").addEventListener("click",closeHandwriting);
+  $("#vocabList").addEventListener("click",event=>{const remove=event.target.dataset.remove;if(remove){delete savedWords[remove];selectedWordKeys.delete(remove);exportSelectedKeys.delete(remove);handwritingSelectedKeys.delete(remove);studySelectedKeys.delete(remove);saveJSON(storageKey,savedWords);persistWordSelection();renderVocabulary();renderSection(false);return;}const word=event.target.dataset.speak;if(word)speak(word);});
+  $("#vocabList").addEventListener("change",event=>{const key=event.target.dataset.selectWord;if(!key)return;if(event.target.checked)selectedWordKeys.add(key);else selectedWordKeys.delete(key);persistWordSelection();$("#selectedWordCount").textContent=`已选 ${selectedWordKeys.size}`;});
+  $("#vocabBulk").addEventListener("click",event=>{const action=event.target.dataset.vocabBulk;if(!action)return;const checked=action==="all";$$('[data-select-word]',$("#vocabList")).forEach(input=>{input.checked=checked;if(checked)selectedWordKeys.add(input.dataset.selectWord);else selectedWordKeys.delete(input.dataset.selectWord);});persistWordSelection();$("#selectedWordCount").textContent=`已选 ${selectedWordKeys.size}`;});
+  $("#clearWords").addEventListener("click",()=>{if(confirm("确定清空全部生词吗？")){savedWords={};selectedWordKeys.clear();exportSelectedKeys.clear();handwritingSelectedKeys.clear();studySelectedKeys.clear();saveJSON(storageKey,savedWords);persistWordSelection();renderVocabulary();renderSection(false);}});
+
+  $("#exportButton").addEventListener("click",openExportModal); $("#closeExport").addEventListener("click",closeExportModal); $("#confirmExport").addEventListener("click",confirmExport);
+  $("#exportModal").addEventListener("click",event=>{if(event.target===$("#exportModal"))closeExportModal();});
+  $("#exportWordList").addEventListener("change",event=>{if(event.target.type!=="checkbox")return;if(event.target.checked)exportSelectedKeys.add(event.target.value);else exportSelectedKeys.delete(event.target.value);updateExportCount();});
+
+  document.addEventListener("click",event=>{const button=event.target.closest("[data-picker][data-action]");if(!button)return;const mapping={export:[$("#exportWordList"),exportSelectedKeys],handwriting:[$("#handwritingWordList"),handwritingSelectedKeys],study:[$("#studyWordList"),studySelectedKeys]};const target=mapping[button.dataset.picker];if(!target)return;setPickerSelection(target[0],target[1],button.dataset.action==="all");if(button.dataset.picker==="export")updateExportCount();});
+
+  $("#openHandwriting").addEventListener("click",openHandwriting); $("#closeHandwriting").addEventListener("click",closeHandwriting); $("#startHandwriting").addEventListener("click",startHandwriting); $("#handwritingBack").addEventListener("click",backToHandwritingSetup);
+  $("#handwritingWordList").addEventListener("change",event=>{if(event.target.type!=="checkbox")return;if(event.target.checked)handwritingSelectedKeys.add(event.target.value);else handwritingSelectedKeys.delete(event.target.value);});
   $("#dictationSpeak").addEventListener("click",()=>{const item=dictationWords()[dictationIndex];if(item)speak(item.word,item.info?.audio);});
   $("#revealAnswer").addEventListener("click",()=>{const a=$("#dictationAnswer");a.classList.toggle("hidden-answer");$("#revealAnswer").textContent=a.classList.contains("hidden-answer")?"显示答案":"隐藏答案";});
   $("#prevWord").addEventListener("click",()=>moveDictation(-1)); $("#nextWord").addEventListener("click",()=>moveDictation(1)); $("#undoStroke").addEventListener("click",()=>{strokes.pop();redrawCanvas();saveCurrentWriting();}); $("#clearCanvas").addEventListener("click",()=>{strokes=[];redrawCanvas();saveCurrentWriting();}); $("#saveCanvas").addEventListener("click",downloadCanvas);
+
+  $("#studyButton").addEventListener("click",openStudy); $("#closeStudy").addEventListener("click",closeStudy); $("#startStudy").addEventListener("click",startStudy); $("#studyBack").addEventListener("click",backToStudySetup);
+  $("#studyWordList").addEventListener("change",event=>{if(event.target.type!=="checkbox")return;if(event.target.checked)studySelectedKeys.add(event.target.value);else studySelectedKeys.delete(event.target.value);});
+  $("#studySpeak").addEventListener("click",()=>{const item=studyQueue[studyIndex];if(item)speak(item.word,item.info?.audio);}); $("#revealStudy").addEventListener("click",revealStudyMeaning); $("#studyAgain").addEventListener("click",()=>rateStudy(false)); $("#studyKnown").addEventListener("click",()=>rateStudy(true));
+  $("#studyModal").addEventListener("click",event=>{if(event.target===$("#studyModal"))closeStudy();});
+
   canvas().addEventListener("pointerdown",startStroke); canvas().addEventListener("pointermove",moveStroke); canvas().addEventListener("pointerup",endStroke); canvas().addEventListener("pointercancel",endStroke);
   window.addEventListener("resize",()=>{if($("#handwritingModal").classList.contains("open"))resizeCanvas();}); window.addEventListener("scroll",updateProgress,{passive:true});
+  document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;closeDrawer();closeExportModal();closeStudy();closeHandwriting();});
 })();
