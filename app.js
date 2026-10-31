@@ -14,6 +14,7 @@
   const writingKey = "tem4-handwriting-v1";
   const wordSelectionKey = "tem4-word-selection-v1";
   const studyProgressKey = "tem4-study-progress-v1";
+  const studyAutoSpeakKey = "tem4-study-autospeak-v1";
   const importanceWords = new Set(("abandon abstract academic access accommodate accumulate acknowledge acquire adapt adequate adjacent advocate ambiguous apparent arbitrary assess assume attain attribute authentic bias cease coherent coincide compelling comprehensive conceive consecutive considerable constitute constrain controversy conventional crucial decline define derive diminish discriminate distinct diverse domestic elaborate emerge empirical enhance equivalent establish evident explicit facilitate fluctuate fundamental generate hypothesis identify imply impose incentive inevitable inhibit initiate insight integral interpret intervene intrinsic justify maintain manipulate mechanism modify mutual notion objective obtain perceive persist perspective plausible preliminary presume prevalent profound promote proportion pursue rational reinforce relevant reluctant resolve retain reveal significant subsequent substitute sustain tentative transform trigger ultimate undermine valid welfare").split(/\s+/));
   const phraseEntries = [
     ["according to","根据；按照"],["as well as","以及；除……之外还"],["in order to","为了"],["due to","由于；因为"],
@@ -71,6 +72,7 @@
   let studyIndex = 0;
   let studyKnown = 0;
   let studyProgress = loadJSON(studyProgressKey, {});
+  let studyAutoSpeak = localStorage.getItem(studyAutoSpeakKey) !== "0";
   let glossVisible = true;
   let wordGlossVisible = localStorage.getItem("tem4-word-gloss-visible") !== "0";
   let translationVisible = true;
@@ -342,6 +344,11 @@
     const voices = speechSynthesis.getVoices();
     utterance.voice = voices.find(v => v.lang === "en-GB") || voices.find(v => v.lang.startsWith("en")) || null;
     speechSynthesis.speak(utterance);
+  }
+
+  function stopSpeaking() {
+    if (audio) { audio.pause(); audio = null; }
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
   }
 
   async function fetchDictionary(word) {
@@ -683,10 +690,28 @@
     if (!Object.keys(savedWords).length) { showToast("先收藏生词，再开始背词"); return; }
     studySelectedKeys = new Set(selectedWordKeys);
     renderWordPicker($("#studyWordList"), studySelectedKeys);
+    renderStudyAutoControls();
     $("#studySetup").hidden = false;
     $("#studySession").hidden = true;
     $("#studyModal").classList.add("open");
     $("#studyModal").setAttribute("aria-hidden", "false");
+  }
+
+  function renderStudyAutoControls() {
+    $("#studyAutoSpeak").checked = studyAutoSpeak;
+    $("#studyAutoToggle").textContent = studyAutoSpeak ? "🔊 自动发音：开" : "🔇 自动发音：关";
+    $("#studyAutoToggle").setAttribute("aria-pressed", String(studyAutoSpeak));
+  }
+
+  function setStudyAutoSpeak(enabled, speakNow = false) {
+    studyAutoSpeak = enabled;
+    localStorage.setItem(studyAutoSpeakKey, enabled ? "1" : "0");
+    renderStudyAutoControls();
+    if (!enabled) stopSpeaking();
+    if (enabled && speakNow) {
+      const item = studyQueue[studyIndex];
+      if (item) speak(item.word, item.info?.audio);
+    }
   }
 
   function closeStudy() {
@@ -734,6 +759,7 @@
     $("#studyProgressText").textContent = `${studyIndex + 1} / ${studyQueue.length}`;
     $("#studyKnownCount").textContent = `已掌握 ${studyKnown}`;
     $("#studyProgressBar").style.width = `${Math.round(studyIndex / Math.max(1, studyQueue.length) * 100)}%`;
+    if (studyAutoSpeak) speak(item.word, item.info?.audio);
   }
 
   function revealStudyMeaning() {
@@ -816,6 +842,8 @@
 
   $("#studyButton").addEventListener("click",openStudy); $("#closeStudy").addEventListener("click",closeStudy); $("#startStudy").addEventListener("click",startStudy); $("#studyBack").addEventListener("click",backToStudySetup);
   $("#studyWordList").addEventListener("change",event=>{if(event.target.type!=="checkbox")return;if(event.target.checked)studySelectedKeys.add(event.target.value);else studySelectedKeys.delete(event.target.value);});
+  $("#studyAutoSpeak").addEventListener("change",event=>setStudyAutoSpeak(event.target.checked));
+  $("#studyAutoToggle").addEventListener("click",()=>setStudyAutoSpeak(!studyAutoSpeak, !studyAutoSpeak));
   $("#studySpeak").addEventListener("click",()=>{const item=studyQueue[studyIndex];if(item)speak(item.word,item.info?.audio);}); $("#revealStudy").addEventListener("click",revealStudyMeaning); $("#studyAgain").addEventListener("click",()=>rateStudy(false)); $("#studyKnown").addEventListener("click",()=>rateStudy(true));
   $("#studyModal").addEventListener("click",event=>{if(event.target===$("#studyModal"))closeStudy();});
 

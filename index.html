@@ -134,12 +134,14 @@
       <div class="selection-head"><div><span class="mini-label">FLASHCARD MODE</span><h2>卡片背词</h2></div><button class="drawer-close" id="closeStudy" aria-label="关闭">×</button></div>
       <div class="practice-setup" id="studySetup">
         <p class="setup-hint">选择本轮要复习的生词。学习记录会保存在当前浏览器。</p>
+        <label class="study-auto-option"><input type="checkbox" id="studyAutoSpeak" checked><span>每张卡片自动发音</span></label>
         <div class="picker-head"><strong>选择背诵生词</strong><div><button data-picker="study" data-action="all">全选</button><button data-picker="study" data-action="none">全不选</button></div></div>
         <div class="word-pick-list" id="studyWordList"></div>
         <button class="start-practice" id="startStudy">开始背词</button>
       </div>
       <div class="study-session" id="studySession" hidden>
         <div class="study-progress"><span id="studyProgressText">1 / 1</span><i><b id="studyProgressBar"></b></i><span id="studyKnownCount">已掌握 0</span></div>
+        <button class="study-auto-toggle" id="studyAutoToggle" type="button" aria-pressed="true">🔊 自动发音：开</button>
         <article class="study-flashcard">
           <button class="round-button" id="studySpeak">▶</button>
           <strong id="studyWord">word</strong><span id="studyPhonetic">/wɜːd/</span>
