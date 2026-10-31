@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="2012-2025 英语专业四级真题精读、逐词发音、语境翻译与手写默写">
+  <title>专词｜英语专业四级真题精读</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f4cf58'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38'%3E%E4%B8%93%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-button mobile-only" id="menuButton" aria-label="打开目录">☰</button>
+    <a class="brand" href="#">
+      <span class="brand-mark">专</span>
+      <span><strong>专词</strong><small>TEM-4 真题精读</small></span>
+    </a>
+    <div class="top-actions">
+      <button class="control-button" id="toggleWordGloss">逐词 <span>开</span></button>
+      <button class="control-button" id="toggleGloss">标记 <span>开</span></button>
+      <button class="control-button" id="toggleTranslation">段译 <span>开</span></button>
+      <button class="control-button hand-button" id="openHandwriting">✍ 手写默写</button>
+      <button class="primary-button" id="exportButton">导出生词默写 PDF</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="exam-card">
+        <div class="year" id="examYear">2025</div>
+        <div><strong id="examName">英语专业四级</strong><span id="examVariant">真题 · 精读版</span></div>
+      </div>
+      <label class="search-box"><span>⌕</span><input id="navSearch" type="search" placeholder="搜索年份或题型"></label>
+      <nav id="sectionNav" aria-label="真题目录"></nav>
+      <div class="legend">
+        <p><i class="dot yellow"></i>重点词</p>
+        <p><i class="dot blue"></i>短语 / 固定搭配</p>
+        <p><i class="dot red"></i>点击任意单词：发音 + 音标 + 详解</p>
+      </div>
+    </aside>
+
+    <main class="reader">
+      <div class="reader-head">
+        <div>
+          <p class="eyebrow" id="sectionEyebrow">PART V · READING COMPREHENSION</p>
+          <h1 id="sectionTitle">Reading Comprehension</h1>
+          <p id="sectionIntro" class="section-intro"></p>
+        </div>
+        <div class="progress-ring" aria-label="阅读进度"><span id="progressValue">0%</span></div>
+      </div>
+      <section class="paper" id="paper" aria-live="polite"></section>
+      <div class="page-nav">
+        <button id="prevButton">← 上一节</button>
+        <button id="nextButton">下一节 →</button>
+      </div>
+    </main>
+
+    <aside class="vocab-panel" id="vocabPanel">
+      <div class="vocab-head">
+        <div><span class="mini-label">MY WORDS</span><h2>我的生词</h2></div>
+        <span class="count" id="wordCount">0</span>
+      </div>
+      <p class="empty-hint" id="emptyHint">点正文里的单词，再点星标收藏。生词、译文与查词结果仅保存在当前浏览器。</p>
+      <div class="vocab-list" id="vocabList"></div>
+      <button class="clear-button" id="clearWords">清空生词本</button>
+    </aside>
+  </div>
+
+  <section class="word-drawer" id="wordDrawer" aria-hidden="true" aria-label="单词详解">
+    <button class="drawer-close" id="closeDrawer" aria-label="关闭">×</button>
+    <div class="word-hero">
+      <button class="speak-button" id="wordSpeak" title="朗读">▶</button>
+      <div><strong id="detailWord">word</strong><span id="detailPhonetic">正在查询音标…</span></div>
+      <button class="star-button" id="detailStar" title="标为生词">☆</button>
+    </div>
+    <div class="context-meaning"><span>语境义</span><p id="detailChinese">正在获取精准释义…</p></div>
+    <div class="detail-section"><h3>English explanation</h3><div id="detailDefinitions" class="definition-list"><p class="loading-line">正在加载英文释义…</p></div></div>
+    <div class="detail-section"><h3>语法用法 · 常见搭配 · 固定结构</h3><div id="detailUsage" class="usage-list"></div></div>
+    <p class="network-note" id="networkNote">中文词义、音标和已收录用法优先读取离线词库；缺少可靠搭配时可联网补充，仅发送当前单词。</p>
+  </section>
+  <div class="drawer-shade" id="drawerShade"></div>
+
+  <section class="handwriting-modal" id="handwritingModal" aria-hidden="true">
+    <div class="handwriting-card">
+      <div class="handwriting-head">
+        <div><span class="mini-label">HANDWRITING MODE</span><h2>生词手写默写</h2></div>
+        <button id="closeHandwriting" class="drawer-close" aria-label="关闭">×</button>
+      </div>
+      <div class="prompt-card">
+        <button id="dictationSpeak" class="round-button" title="播放发音">▶</button>
+        <div><span id="dictationCounter">1 / 1</span><p id="dictationClue">先听发音，再在下方写出单词</p><strong id="dictationAnswer" class="hidden-answer">••••••</strong></div>
+        <button id="revealAnswer" class="reveal-button">显示答案</button>
+      </div>
+      <div class="canvas-wrap"><canvas id="handwritingCanvas"></canvas><span class="canvas-watermark">在这里手写</span></div>
+      <div class="handwriting-tools">
+        <label>笔色 <input type="color" id="penColor" value="#20313b"></label>
+        <label>粗细 <input type="range" id="penSize" min="2" max="12" value="4"></label>
+        <button id="undoStroke">撤销</button><button id="clearCanvas">清空</button><button id="saveCanvas">保存笔迹</button>
+      </div>
+      <div class="dictation-nav"><button id="prevWord">← 上一个</button><button id="nextWord">下一个 →</button></div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status"></div>
+  <section class="print-sheet" id="printSheet"></section>
+
+  <script src="data.js"></script>
+  <script src="lexicon.js"></script>
+  <script src="usage.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
