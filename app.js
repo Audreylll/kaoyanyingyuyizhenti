@@ -12,6 +12,7 @@
   const dictionaryKey = "tem4-dictionary-cache-v2";
   const translationKey = "tem4-translation-cache-v2";
   const writingKey = "tem4-handwriting-v1";
+  const typingKey = "tem4-keyboard-dictation-v1";
   const wordSelectionKey = "tem4-word-selection-v1";
   const studyProgressKey = "tem4-study-progress-v1";
   const studyAutoSpeakKey = "tem4-study-autospeak-v1";
@@ -61,6 +62,7 @@
   let dictionaryCache = loadJSON(dictionaryKey, {});
   let translationCache = loadJSON(translationKey, {});
   let writingCache = loadJSON(writingKey, {});
+  let typingCache = loadJSON(typingKey, {});
   const storedWordSelection = loadJSON(wordSelectionKey, null);
   let selectedWordKeys = new Set(Array.isArray(storedWordSelection) ? storedWordSelection.filter(key => savedWords[key]) : Object.keys(savedWords));
   let exportSelectedKeys = new Set();
@@ -68,6 +70,7 @@
   let studySelectedKeys = new Set();
   let handwritingQueue = [];
   let handwritingMode = "zh-en";
+  let answerMethod = "handwrite";
   let studyQueue = [];
   let studyIndex = 0;
   let studyKnown = 0;
@@ -655,19 +658,26 @@
     handwritingQueue = savedWordList(handwritingSelectedKeys);
     if (!handwritingQueue.length) { showToast("请至少选择一个默写生词"); return; }
     handwritingMode = $('input[name="handwritingMode"]:checked')?.value || "zh-en";
+    answerMethod = $('input[name="answerMethod"]:checked')?.value || "handwrite";
     dictationIndex = 0;
     $("#handwritingSetup").hidden = true;
     $("#handwritingSession").hidden = false;
-    requestAnimationFrame(() => { resizeCanvas(); loadCurrentWriting(); renderDictation(); });
+    $("#handwritingDrawArea").hidden = answerMethod !== "handwrite";
+    $("#handwritingKeyboardArea").hidden = answerMethod !== "keyboard";
+    requestAnimationFrame(() => {
+      if (answerMethod === "handwrite") resizeCanvas();
+      renderDictation();
+      if (answerMethod === "keyboard") $("#dictationKeyboardInput").focus();
+    });
   }
 
   function closeHandwriting() {
-    if (!$("#handwritingSession").hidden) saveCurrentWriting();
+    if (!$("#handwritingSession").hidden) saveCurrentPractice();
     $("#handwritingModal").classList.remove("open"); $("#handwritingModal").setAttribute("aria-hidden", "true");
   }
 
   function backToHandwritingSetup() {
-    saveCurrentWriting();
+    saveCurrentPractice();
     $("#handwritingSession").hidden = true;
     $("#handwritingSetup").hidden = false;
   }
@@ -683,7 +693,11 @@
     $("#dictationSpeak").style.visibility = handwritingMode === "zh-en" ? "visible" : "visible";
     $("#handwritingCanvas").setAttribute("aria-label", handwritingMode === "zh-en" ? "书写英文" : "书写中文");
     $(".canvas-watermark").textContent = handwritingMode === "zh-en" ? "在这里写英文" : "在这里写中文";
+    $("#dictationKeyboardInput").placeholder = handwritingMode === "zh-en" ? "请输入英文单词" : "请输入中文意思";
+    $("#typingResult").textContent = "";
+    $("#typingResult").className = "typing-result";
     $("#revealAnswer").textContent = "显示答案";
+    if (answerMethod === "handwrite") loadCurrentWriting(); else loadCurrentTyping();
   }
 
   function openStudy() {
@@ -798,7 +812,27 @@
   function writingId() { const key=dictationWords()[dictationIndex]?.key; return key ? `${handwritingMode}:${key}` : ""; }
   function saveCurrentWriting() { const id=writingId(); if(!id)return; writingCache[id]=strokes; saveJSON(writingKey,writingCache); }
   function loadCurrentWriting() { strokes=writingCache[writingId()]||[]; redrawCanvas(); }
-  function moveDictation(delta) { saveCurrentWriting(); const list=dictationWords(); dictationIndex=(dictationIndex+delta+list.length)%list.length; loadCurrentWriting(); renderDictation(); speak(list[dictationIndex].word,list[dictationIndex].info?.audio); }
+  function typingId() { const key=dictationWords()[dictationIndex]?.key; return key ? `${handwritingMode}:${key}` : ""; }
+  function saveCurrentTyping() { const id=typingId(); if(!id)return; typingCache[id]=$("#dictationKeyboardInput").value; saveJSON(typingKey,typingCache); }
+  function loadCurrentTyping() { $("#dictationKeyboardInput").value=typingCache[typingId()]||""; }
+  function saveCurrentPractice() { answerMethod === "keyboard" ? saveCurrentTyping() : saveCurrentWriting(); }
+  function moveDictation(delta) { saveCurrentPractice(); const list=dictationWords(); dictationIndex=(dictationIndex+delta+list.length)%list.length; renderDictation(); speak(list[dictationIndex].word,list[dictationIndex].info?.audio); }
+  function checkKeyboardAnswer() {
+    const item=dictationWords()[dictationIndex]; if(!item)return;
+    const value=$("#dictationKeyboardInput").value.trim(); const result=$("#typingResult");
+    if(!value){result.textContent="请先输入答案";result.className="typing-result needs-review";return;}
+    saveCurrentTyping();
+    const expected=handwritingMode==="zh-en"?item.word:wordChinese(item);
+    let correct=false;
+    if(handwritingMode==="zh-en") correct=normalizeWord(value)===normalizeWord(item.word);
+    else {
+      const compact=text=>text.replace(/[\s，,。.!！?？；;：:、]/g,"");
+      const typed=compact(value);
+      correct=expected.split(/[；;]/).map(compact).filter(Boolean).some(part=>(typed.length>=2||part.length===1)&&(typed.includes(part)||part.includes(typed)));
+    }
+    result.textContent=correct?`回答正确：${expected}`:`请对照参考答案：${expected}`;
+    result.className=`typing-result ${correct?"correct":"needs-review"}`;
+  }
   function downloadCanvas() { const link=document.createElement("a"); link.download=`TEM4-${writingId() || "handwriting"}.png`; link.href=canvas().toDataURL("image/png"); link.click(); }
 
   let toastTimer;
@@ -838,6 +872,10 @@
   $("#handwritingWordList").addEventListener("change",event=>{if(event.target.type!=="checkbox")return;if(event.target.checked)handwritingSelectedKeys.add(event.target.value);else handwritingSelectedKeys.delete(event.target.value);});
   $("#dictationSpeak").addEventListener("click",()=>{const item=dictationWords()[dictationIndex];if(item)speak(item.word,item.info?.audio);});
   $("#revealAnswer").addEventListener("click",()=>{const a=$("#dictationAnswer");a.classList.toggle("hidden-answer");$("#revealAnswer").textContent=a.classList.contains("hidden-answer")?"显示答案":"隐藏答案";});
+  $("#dictationKeyboardInput").addEventListener("input",saveCurrentTyping);
+  $("#dictationKeyboardInput").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();checkKeyboardAnswer();}});
+  $("#checkKeyboardAnswer").addEventListener("click",checkKeyboardAnswer);
+  $("#clearKeyboardAnswer").addEventListener("click",()=>{$("#dictationKeyboardInput").value="";$("#typingResult").textContent="";saveCurrentTyping();$("#dictationKeyboardInput").focus();});
   $("#prevWord").addEventListener("click",()=>moveDictation(-1)); $("#nextWord").addEventListener("click",()=>moveDictation(1)); $("#undoStroke").addEventListener("click",()=>{strokes.pop();redrawCanvas();saveCurrentWriting();}); $("#clearCanvas").addEventListener("click",()=>{strokes=[];redrawCanvas();saveCurrentWriting();}); $("#saveCanvas").addEventListener("click",downloadCanvas);
 
   $("#studyButton").addEventListener("click",openStudy); $("#closeStudy").addEventListener("click",closeStudy); $("#startStudy").addEventListener("click",startStudy); $("#studyBack").addEventListener("click",backToStudySetup);

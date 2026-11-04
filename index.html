@@ -21,7 +21,7 @@
       <button class="control-button" id="toggleGloss">标记 <span>开</span></button>
       <button class="control-button" id="toggleTranslation">段译 <span>开</span></button>
       <button class="control-button" id="studyButton">🧠 背词</button>
-      <button class="control-button hand-button" id="openHandwriting">✍ 手写默写</button>
+      <button class="control-button hand-button" id="openHandwriting">✍ 默写练习</button>
       <button class="primary-button" id="exportButton">选择生词并打印</button>
     </div>
   </header>
@@ -86,7 +86,7 @@
   <section class="handwriting-modal" id="handwritingModal" aria-hidden="true">
     <div class="handwriting-card">
       <div class="handwriting-head">
-        <div><span class="mini-label">HANDWRITING MODE</span><h2>生词手写默写</h2></div>
+        <div><span class="mini-label">DICTATION MODE</span><h2>生词默写练习</h2></div>
         <button id="closeHandwriting" class="drawer-close" aria-label="关闭">×</button>
       </div>
       <div class="practice-setup" id="handwritingSetup">
@@ -95,9 +95,14 @@
           <label><input type="radio" name="handwritingMode" value="zh-en" checked><span>看中文，写英文</span></label>
           <label><input type="radio" name="handwritingMode" value="en-zh"><span>看英文，写中文</span></label>
         </div>
+        <h3>选择作答方式</h3>
+        <div class="mode-options answer-method-options">
+          <label><input type="radio" name="answerMethod" value="handwrite" checked><span>✍ 手写作答</span></label>
+          <label><input type="radio" name="answerMethod" value="keyboard"><span>⌨ 键盘输入</span></label>
+        </div>
         <div class="picker-head"><strong>选择默写生词</strong><div><button data-picker="handwriting" data-action="all">全选</button><button data-picker="handwriting" data-action="none">全不选</button></div></div>
         <div class="word-pick-list" id="handwritingWordList"></div>
-        <button class="start-practice" id="startHandwriting">开始手写默写</button>
+        <button class="start-practice" id="startHandwriting">开始默写</button>
       </div>
       <div id="handwritingSession" hidden>
         <div class="prompt-card">
@@ -105,11 +110,19 @@
           <div class="prompt-copy"><span id="dictationCounter">1 / 1</span><strong id="dictationPrompt">中文释义</strong><p id="dictationClue">英文解释</p><strong id="dictationAnswer" class="hidden-answer">••••••</strong></div>
           <button id="revealAnswer" class="reveal-button">显示答案</button>
         </div>
-        <div class="canvas-wrap"><canvas id="handwritingCanvas"></canvas><span class="canvas-watermark">在这里手写</span></div>
-        <div class="handwriting-tools">
-          <label>笔色 <input type="color" id="penColor" value="#20313b"></label>
-          <label>粗细 <input type="range" id="penSize" min="2" max="12" value="4"></label>
-          <button id="undoStroke">撤销</button><button id="clearCanvas">清空</button><button id="saveCanvas">保存笔迹</button>
+        <div id="handwritingDrawArea">
+          <div class="canvas-wrap"><canvas id="handwritingCanvas"></canvas><span class="canvas-watermark">在这里手写</span></div>
+          <div class="handwriting-tools">
+            <label>笔色 <input type="color" id="penColor" value="#20313b"></label>
+            <label>粗细 <input type="range" id="penSize" min="2" max="12" value="4"></label>
+            <button id="undoStroke">撤销</button><button id="clearCanvas">清空</button><button id="saveCanvas">保存笔迹</button>
+          </div>
+        </div>
+        <div class="keyboard-answer-area" id="handwritingKeyboardArea" hidden>
+          <label for="dictationKeyboardInput">请用键盘输入答案</label>
+          <input id="dictationKeyboardInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="在这里输入答案">
+          <div class="keyboard-answer-actions"><button id="checkKeyboardAnswer">检查答案</button><button id="clearKeyboardAnswer">清空输入</button></div>
+          <p class="typing-result" id="typingResult" aria-live="polite"></p>
         </div>
         <div class="dictation-nav"><button id="handwritingBack">← 重选生词</button><span><button id="prevWord">← 上一个</button><button id="nextWord">下一个 →</button></span></div>
       </div>
